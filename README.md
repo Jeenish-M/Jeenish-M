@@ -1,5 +1,5 @@
 # 💫 About Me:
-💻 I'm currently working on : Multi-role Accounting Project APIs in Laravel.<br>🌱 I'm currently learning : ReactJS - A popular and easy-curve frontend web library build on JavaScript.<br>💡 Ask me about : Laravel, React, BootStrap, TailwindCSS, API Development, and System Architecture.<br>⚡ Fun fact : Chai ☕, Music 🎵 and Python 🐍 are best combo for me to develop AI and Robotics.
+💻 I'm currently working on : Industrial ERP Project APIs & Admin Panel in Laravel.<br>🌱 I'm currently learning : ReactJS - A popular and easy-curve frontend web library build on JavaScript.<br>💡 Ask me about : Laravel, React, BootStrap, TailwindCSS, API Development, and System Architecture.<br>⚡ Fun fact : Chai ☕, Music 🎵 and Python 🐍 are best combo for me to develop AI and Robotics.
 
 
 ## 🌐 Socials:
