@@ -2,7 +2,7 @@ name: Generate Fake Contribution Snake
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: "0 0 * * *"
   workflow_dispatch:
   push:
     branches:
@@ -18,145 +18,119 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate random contribution grid
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Generate randomized snake SVG
         shell: bash
         run: |
           mkdir -p dist
 
-          cat > generate_snake.py <<'PY'
+          cat << 'EOF' > generate_snake.py
           import random
           from datetime import date
 
+          # Use daily seed so the grid updates every 24h, or remove for total randomness
           random.seed(date.today().isoformat())
 
           COLS = 53
           ROWS = 7
-          CELL = 12
-          GAP = 3
-          STEP = CELL + GAP
-          LEFT = 35
-          TOP = 35
+          CELL_SIZE = 11
+          CELL_GAP = 3
+          STEP = CELL_SIZE + CELL_GAP
+          OFFSET_X = 20
+          OFFSET_Y = 20
 
-          WIDTH = LEFT * 2 + COLS * STEP
-          HEIGHT = TOP * 2 + ROWS * STEP + 25
+          SVG_WIDTH = OFFSET_X * 2 + COLS * STEP
+          SVG_HEIGHT = OFFSET_Y * 2 + ROWS * STEP
 
-          LIGHT_LEVELS = [
-              "#ebedf0",
-              "#9be9a8",
-              "#40c463",
-              "#30a14e",
-              "#216e39",
-          ]
+          PALETTES = {
+              "light": {
+                  "bg": "#ffffff",
+                  "empty": "#ebedf0",
+                  "levels": ["#9be9a8", "#40c463", "#30a14e", "#216e39"],
+                  "snake_head": "#196127",
+                  "snake_body": "#38a169"
+              },
+              "dark": {
+                  "bg": "#0d1117",
+                  "empty": "#161b22",
+                  "levels": ["#0e4429", "#006d32", "#26a641", "#39d353"],
+                  "snake_head": "#56d364",
+                  "snake_body": "#2ea043"
+              }
+          }
 
-          DARK_LEVELS = [
-              "#161b22",
-              "#0e4429",
-              "#006d32",
-              "#26a641",
-              "#39d353",
-          ]
+          # Generate randomized 53x7 grid with natural-looking clustering
+          grid = []
+          for x in range(COLS):
+              col = []
+              for y in range(ROWS):
+                  level = random.choices([0, 1, 2, 3, 4], weights=[45, 25, 15, 10, 5])[0]
+                  col.append(level)
+              grid.append(col)
 
-          grid = [
-              [
-                  random.choices(
-                      range(5),
-                      weights=[35, 20, 20, 15, 10]
-                  )[0]
-                  for _ in range(ROWS)
-              ]
-              for _ in range(COLS)
-          ]
+          def build_svg(theme_name):
+              theme = PALETTES[theme_name]
+              svg_elements = []
 
-          def generate_svg(dark=False):
-              background = "#0d1117" if dark else "#ffffff"
-              text_color = "#c9d1d9" if dark else "#24292f"
-              palette = DARK_LEVELS if dark else LIGHT_LEVELS
+              # Draw background
+              svg_elements.append(f'<rect width="100%" height="100%" fill="{theme["bg"]}" rx="6"/>')
 
-              cells = []
-
+              # Draw cells
               for x in range(COLS):
                   for y in range(ROWS):
-                      px = LEFT + x * STEP
-                      py = TOP + y * STEP
-                      color = palette[grid[x][y]]
-
-                      cells.append(
-                          f'<rect x="{px}" y="{py}" '
-                          f'width="{CELL}" height="{CELL}" '
-                          f'rx="2" fill="{color}"/>'
+                      lvl = grid[x][y]
+                      fill = theme["empty"] if lvl == 0 else theme["levels"][lvl - 1]
+                      cx = OFFSET_X + x * STEP
+                      cy = OFFSET_Y + y * STEP
+                      svg_elements.append(
+                          f'<rect x="{cx}" y="{cy}" width="{CELL_SIZE}" height="{CELL_SIZE}" rx="2" fill="{fill}"/>'
                       )
 
+              # Build sweeping snake trajectory through the grid
               points = []
-
               for x in range(COLS):
-                  ys = (
-                      range(ROWS)
-                      if x % 2 == 0
-                      else range(ROWS - 1, -1, -1)
-                  )
+                  row_order = range(ROWS) if x % 2 == 0 else range(ROWS - 1, -1, -1)
+                  for y in row_order:
+                      px = OFFSET_X + x * STEP + CELL_SIZE / 2
+                      py = OFFSET_Y + y * STEP + CELL_SIZE / 2
+                      points.append(f"{px:.1f},{py:.1f}")
 
-                  for y in ys:
-                      px = LEFT + x * STEP + CELL / 2
-                      py = TOP + y * STEP + CELL / 2
-                      points.append(f"{px},{py}")
+              total_length = len(points) * STEP
+              points_str = " ".join(points)
 
-              path_length = len(points) * STEP
-
-              snake = f"""
-              <polyline
-                  points="{' '.join(points)}"
-                  fill="none"
-                  stroke="#39d353"
-                  stroke-width="4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-dasharray="{path_length}"
-                  stroke-dashoffset="{path_length}">
-                  <animate
-                      attributeName="stroke-dashoffset"
-                      from="{path_length}"
-                      to="0"
-                      dur="12s"
-                      repeatCount="indefinite"/>
+              # Animated snake body & glowing head
+              snake_markup = f'''
+              <polyline points="{points_str}" fill="none" stroke="{theme["snake_body"]}" stroke-width="{CELL_SIZE - 2}"
+                  stroke-linecap="round" stroke-linejoin="round"
+                  stroke-dasharray="60 {total_length}" stroke-dashoffset="{total_length}">
+                  <animate attributeName="stroke-dashoffset" from="{total_length}" to="-60" dur="18s" repeatCount="indefinite"/>
               </polyline>
-              """
+              <polyline points="{points_str}" fill="none" stroke="{theme["snake_head"]}" stroke-width="{CELL_SIZE}"
+                  stroke-linecap="round" stroke-linejoin="round"
+                  stroke-dasharray="12 {total_length}" stroke-dashoffset="{total_length}">
+                  <animate attributeName="stroke-dashoffset" from="{total_length}" to="-12" dur="18s" repeatCount="indefinite"/>
+              </polyline>
+              '''
+              svg_elements.append(snake_markup)
 
-              return f"""<svg xmlns="http://www.w3.org/2000/svg"
-                  width="{WIDTH}"
-                  height="{HEIGHT}"
-                  viewBox="0 0 {WIDTH} {HEIGHT}">
-                  <rect width="100%" height="100%" fill="{background}"/>
-                  {''.join(cells)}
-                  {snake}
-                  <text x="{LEFT}" y="{HEIGHT - 8}"
-                      font-family="Arial, sans-serif"
-                      font-size="11"
-                      fill="{text_color}">
-                      Random contribution animation
-                  </text>
-              </svg>
-              """
+              return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}" width="{SVG_WIDTH}" height="{SVG_HEIGHT}">
+                  {''.join(svg_elements)}
+              </svg>'''
 
-          with open(
-              "dist/github-contribution-grid-snake.svg",
-              "w",
-              encoding="utf-8"
-          ) as file:
-              file.write(generate_svg())
+          with open("dist/github-contribution-grid-snake.svg", "w", encoding="utf-8") as f:
+              f.write(build_svg("light"))
 
-          with open(
-              "dist/github-contribution-grid-snake-dark.svg",
-              "w",
-              encoding="utf-8"
-          ) as file:
-              file.write(generate_svg(dark=True))
-
-          print("SVG files generated successfully.")
-          PY
+          with open("dist/github-contribution-grid-snake-dark.svg", "w", encoding="utf-8") as f:
+              f.write(build_svg("dark"))
+          EOF
 
           python generate_snake.py
 
-      - name: Publish SVG files to output branch
+      - name: Publish snake to output branch
         uses: crazy-max/ghaction-github-pages@v3.1.0
         with:
           target_branch: output
