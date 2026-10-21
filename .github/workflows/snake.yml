@@ -1,4 +1,4 @@
-name: Generate Fake Contribution Snake
+name: Generate Contribution Snake
 
 on:
   schedule:
@@ -21,111 +21,131 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
-      - name: Generate randomized snake SVG
+      - name: Generate authentic snake animation
         shell: bash
         run: |
           mkdir -p dist
 
           cat << 'EOF' > generate_snake.py
           import random
-          from datetime import date
-
-          # Use daily seed so the grid updates every 24h, or remove for total randomness
-          random.seed(date.today().isoformat())
 
           COLS = 53
           ROWS = 7
-          CELL_SIZE = 11
-          CELL_GAP = 3
-          STEP = CELL_SIZE + CELL_GAP
-          OFFSET_X = 20
-          OFFSET_Y = 20
+          CELL = 11
+          GAP = 3
+          STEP = CELL + GAP
+          PAD_X = 16
+          PAD_Y = 16
 
-          SVG_WIDTH = OFFSET_X * 2 + COLS * STEP
-          SVG_HEIGHT = OFFSET_Y * 2 + ROWS * STEP
+          WIDTH = PAD_X * 2 + COLS * STEP - GAP
+          HEIGHT = PAD_Y * 2 + ROWS * STEP - GAP
+          SNAKE_LEN = 4
+          DURATION = 24  # Total loop duration in seconds
 
-          PALETTES = {
+          # Build continuous grid path (lawnmower traversal visiting all cells)
+          path = []
+          for x in range(COLS):
+              y_range = range(ROWS) if x % 2 == 0 else range(ROWS - 1, -1, -1)
+              for y in y_range:
+                  path.append((x, y))
+
+          TOTAL_STEPS = len(path)
+          step_time = DURATION / TOTAL_STEPS
+
+          # Distribute random contribution dots along the path
+          random.seed(42)
+          GREEN_LEVELS = ["#9be9a8", "#40c463", "#30a14e", "#216e39"]
+          food_indices = set(random.sample(range(5, TOTAL_STEPS - 5), k=38))
+
+          cell_data = {}
+          for i, (x, y) in enumerate(path):
+              if i in food_indices:
+                  cell_data[(x, y)] = (True, random.choice(GREEN_LEVELS), i)
+              else:
+                  cell_data[(x, y)] = (False, None, i)
+
+          THEMES = {
               "light": {
                   "bg": "#ffffff",
                   "empty": "#ebedf0",
-                  "levels": ["#9be9a8", "#40c463", "#30a14e", "#216e39"],
-                  "snake_head": "#196127",
-                  "snake_body": "#38a169"
+                  "snake_head": "#6e40c9",
+                  "snake_body": "#8a63d2",
               },
               "dark": {
                   "bg": "#0d1117",
-                  "empty": "#161b22",
-                  "levels": ["#0e4429", "#006d32", "#26a641", "#39d353"],
-                  "snake_head": "#56d364",
-                  "snake_body": "#2ea043"
+                  "empty": "#ebedf0",     # Light blocks matching your screenshot
+                  "snake_head": "#7928ca",
+                  "snake_body": "#8957e5",
               }
           }
 
-          # Generate randomized 53x7 grid with natural-looking clustering
-          grid = []
-          for x in range(COLS):
-              col = []
-              for y in range(ROWS):
-                  level = random.choices([0, 1, 2, 3, 4], weights=[45, 25, 15, 10, 5])[0]
-                  col.append(level)
-              grid.append(col)
+          def generate_svg(theme_name):
+              theme = THEMES[theme_name]
+              svg_parts = []
 
-          def build_svg(theme_name):
-              theme = PALETTES[theme_name]
-              svg_elements = []
+              svg_parts.append(
+                  f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {HEIGHT}" '
+                  f'width="{WIDTH}" height="{HEIGHT}">\n'
+                  f'  <rect width="100%" height="100%" fill="{theme["bg"]}" rx="6"/>\n'
+              )
 
-              # Draw background
-              svg_elements.append(f'<rect width="100%" height="100%" fill="{theme["bg"]}" rx="6"/>')
+              # 1. Static & Animated Grid Cells
+              for (x, y), (is_food, food_color, step_idx) in cell_data.items():
+                  px = PAD_X + x * STEP
+                  py = PAD_Y + y * STEP
 
-              # Draw cells
-              for x in range(COLS):
-                  for y in range(ROWS):
-                      lvl = grid[x][y]
-                      fill = theme["empty"] if lvl == 0 else theme["levels"][lvl - 1]
-                      cx = OFFSET_X + x * STEP
-                      cy = OFFSET_Y + y * STEP
-                      svg_elements.append(
-                          f'<rect x="{cx}" y="{cy}" width="{CELL_SIZE}" height="{CELL_SIZE}" rx="2" fill="{fill}"/>'
+                  if not is_food:
+                      svg_parts.append(
+                          f'  <rect x="{px}" y="{py}" width="{CELL}" height="{CELL}" '
+                          f'rx="2" fill="{theme["empty"]}"/>\n'
+                      )
+                  else:
+                      eat_progress = round(step_idx / TOTAL_STEPS, 4)
+                      svg_parts.append(
+                          f'  <rect x="{px}" y="{py}" width="{CELL}" height="{CELL}" rx="2" fill="{food_color}">\n'
+                          f'    <animate attributeName="fill" dur="{DURATION}s" repeatCount="indefinite" '
+                          f'calcMode="discrete" '
+                          f'keyTimes="0;{eat_progress};1" '
+                          f'values="{food_color};{theme["empty"]};{theme["empty"]}"/>\n'
+                          f'  </rect>\n'
                       )
 
-              # Build sweeping snake trajectory through the grid
-              points = []
-              for x in range(COLS):
-                  row_order = range(ROWS) if x % 2 == 0 else range(ROWS - 1, -1, -1)
-                  for y in row_order:
-                      px = OFFSET_X + x * STEP + CELL_SIZE / 2
-                      py = OFFSET_Y + y * STEP + CELL_SIZE / 2
-                      points.append(f"{px:.1f},{py:.1f}")
+              # 2. Discrete Snake Segments (Head + Body blocks)
+              for seg in range(SNAKE_LEN):
+                  color = theme["snake_head"] if seg == 0 else theme["snake_body"]
+                  size = CELL if seg == 0 else (CELL - 1)
+                  offset_diff = 0 if seg == 0 else 0.5
 
-              total_length = len(points) * STEP
-              points_str = " ".join(points)
+                  x_vals, y_vals = [], []
+                  for t in range(TOTAL_STEPS):
+                      pos_idx = (t - seg) % TOTAL_STEPS
+                      gx, gy = path[pos_idx]
+                      x_vals.append(str(round(PAD_X + gx * STEP + offset_diff, 1)))
+                      y_vals.append(str(round(PAD_Y + gy * STEP + offset_diff, 1)))
 
-              # Animated snake body & glowing head
-              snake_markup = f'''
-              <polyline points="{points_str}" fill="none" stroke="{theme["snake_body"]}" stroke-width="{CELL_SIZE - 2}"
-                  stroke-linecap="round" stroke-linejoin="round"
-                  stroke-dasharray="60 {total_length}" stroke-dashoffset="{total_length}">
-                  <animate attributeName="stroke-dashoffset" from="{total_length}" to="-60" dur="18s" repeatCount="indefinite"/>
-              </polyline>
-              <polyline points="{points_str}" fill="none" stroke="{theme["snake_head"]}" stroke-width="{CELL_SIZE}"
-                  stroke-linecap="round" stroke-linejoin="round"
-                  stroke-dasharray="12 {total_length}" stroke-dashoffset="{total_length}">
-                  <animate attributeName="stroke-dashoffset" from="{total_length}" to="-12" dur="18s" repeatCount="indefinite"/>
-              </polyline>
-              '''
-              svg_elements.append(snake_markup)
+                  # Loop back to beginning smoothly
+                  x_vals.append(x_vals[0])
+                  y_vals.append(y_vals[0])
 
-              return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {SVG_WIDTH} {SVG_HEIGHT}" width="{SVG_WIDTH}" height="{SVG_HEIGHT}">
-                  {''.join(svg_elements)}
-              </svg>'''
+                  svg_parts.append(
+                      f'  <rect width="{size}" height="{size}" rx="2.5" fill="{color}">\n'
+                      f'    <animate attributeName="x" dur="{DURATION}s" repeatCount="indefinite" '
+                      f'calcMode="discrete" values="{";".join(x_vals)}"/>\n'
+                      f'    <animate attributeName="y" dur="{DURATION}s" repeatCount="indefinite" '
+                      f'calcMode="discrete" values="{";".join(y_vals)}"/>\n'
+                      f'  </rect>\n'
+                  )
+
+              svg_parts.append("</svg>")
+              return "".join(svg_parts)
 
           with open("dist/github-contribution-grid-snake.svg", "w", encoding="utf-8") as f:
-              f.write(build_svg("light"))
+              f.write(generate_svg("light"))
 
           with open("dist/github-contribution-grid-snake-dark.svg", "w", encoding="utf-8") as f:
-              f.write(build_svg("dark"))
+              f.write(generate_svg("dark"))
           EOF
 
           python generate_snake.py
